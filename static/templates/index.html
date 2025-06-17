@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票分析系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .form-container {
+            padding: 40px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 1.1em;
+        }
+
+        input[type="text"], input[type="date"], select {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        input[type="text"]:focus, input[type="date"]:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        select {
+            cursor: pointer;
+        }
+
+        select option {
+            padding: 10px;
+        }
+
+        .date-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.2em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .submit-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result {
+            display: none;
+            margin-top: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 5px solid #28a745;
+        }
+
+        .error {
+            display: none;
+            margin-top: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 5px solid #dc3545;
+            color: #721c24;
+        }
+
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .analysis-item {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .analysis-item h4 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .analysis-item .value {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .chart-btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 12px 25px;
+            background: #28a745;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .chart-btn:hover {
+            background: #218838;
+            transform: translateY(-1px);
+        }
+
+        .stock-examples {
+            margin-top: 15px;
+            padding: 15px;
+            background: #e7f3ff;
+            border-radius: 8px;
+            border-left: 4px solid #2196F3;
+        }
+
+        .stock-examples h4 {
+            color: #1976D2;
+            margin-bottom: 10px;
+            font-size: 1em;
+        }
+
+        .stock-examples p {
+            color: #666;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        .example-codes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .example-code {
+            background: #fff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .example-code:hover {
+            background: #f0f0f0;
+        }
+
+        @media (max-width: 768px) {
+            .date-group {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .form-container {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📈 股票分析系统</h1>
+            <p>专业的股票数据分析与技术指标计算</p>
+        </div>
+
+        <div class="form-container">
+            <form id="stockForm">
+                <div class="form-group">
+                    <label for="stock_code">股票代码</label>
+                    <input type="text" id="stock_code" name="stock_code" 
+                           placeholder="请输入6位股票代码，如：000001" 
+                           maxlength="6" required>
+                    
+                    <div class="stock-examples">
+                        <h4>💡 常用股票代码示例：</h4>
+                        <div class="example-codes">
+                            <span class="example-code" onclick="fillStockCode('000001')">000001 平安银行</span>
+                            <span class="example-code" onclick="fillStockCode('000002')">000002 万科A</span>
+                            <span class="example-code" onclick="fillStockCode('600000')">600000 浦发银行</span>
+                            <span class="example-code" onclick="fillStockCode('600036')">600036 招商银行</span>
+                            <span class="example-code" onclick="fillStockCode('000858')">000858 五粮液</span>
+                        </div>
+                        <p>深市股票以000、002、300开头，沪市股票以600、601、603开头</p>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="time_period">时间周期</label>
+                    <select id="time_period" name="time_period" required>
+                        <option value="daily">日线</option>
+                        <option value="60">60分钟</option>
+                        <option value="30">30分钟</option>
+                        <option value="15">15分钟</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>分析时间区间</label>
+                    <div class="date-group">
+                        <div>
+                            <label for="start_date">开始日期</label>
+                            <input type="date" id="start_date" name="start_date" required>
+                        </div>
+                        <div>
+                            <label for="end_date">结束日期</label>
+                            <input type="date" id="end_date" name="end_date" required>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="submit-btn" id="submitBtn">
+                    🚀 开始分析
+                </button>
+            </form>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>正在分析股票数据，请稍候...</p>
+            </div>
+
+            <div class="error" id="error"></div>
+
+            <div class="result" id="result">
+                <h3>📊 分析结果</h3>
+                <div id="resultContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 设置默认日期
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date();
+            const oneYearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+            
+            // 确保不会设置未来日期
+            const maxDate = today.toISOString().split('T')[0];
+            
+            document.getElementById('start_date').value = oneYearAgo.toISOString().split('T')[0];
+            document.getElementById('end_date').value = maxDate;
+            
+            // 设置日期输入的最大值为今天
+            document.getElementById('start_date').max = maxDate;
+            document.getElementById('end_date').max = maxDate;
+        });
+
+        // 填充股票代码
+        function fillStockCode(code) {
+            document.getElementById('stock_code').value = code;
+        }
+
+        // 表单提交处理
+        document.getElementById('stockForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const submitBtn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const result = document.getElementById('result');
+            
+            // 隐藏之前的结果
+            error.style.display = 'none';
+            result.style.display = 'none';
+            
+            // 显示加载状态
+            loading.style.display = 'block';
+            submitBtn.disabled = true;
+            submitBtn.textContent = '分析中...';
+            
+            fetch('/analyze', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🚀 开始分析';
+                
+                if (!data.success) {
+                    error.textContent = data.message;
+                    error.style.display = 'block';
+                } else {
+                    displayResult(data);
+                    result.style.display = 'block';
+                }
+            })
+            .catch(err => {
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🚀 开始分析';
+                error.textContent = '网络错误，请重试';
+                error.style.display = 'block';
+            });
+        });
+
+        function displayResult(data) {
+            const resultContent = document.getElementById('resultContent');
+            const stats = data.stats;
+            
+            resultContent.innerHTML = `
+                <div style="margin-bottom: 20px;">
+                    <h4>📊 ${stats.stock_name} (${stats.stock_code}) - ${stats.time_period}</h4>
+                    <p>数据量: ${stats.data_points} 条</p>
+                    <p>最新时间: ${stats.latest_date}</p>
+                    ${stats.chip_analysis ? `<p style="color: #ff6b35; font-weight: bold;">💰 筹码分析: ${stats.chip_analysis}</p>` : ''}
+                </div>
+                
+                <div class="analysis-grid">
+                    <div class="analysis-item">
+                        <h4>最新价格</h4>
+                        <div class="value">¥${stats.latest_price.toFixed(2)}</div>
+                    </div>
+                    <div class="analysis-item">
+                        <h4>价格变动</h4>
+                        <div class="value" style="color: ${stats.price_change >= 0 ? '#28a745' : '#dc3545'}">
+                            ${stats.price_change >= 0 ? '+' : ''}${stats.price_change.toFixed(2)}
+                        </div>
+                    </div>
+                    <div class="analysis-item">
+                        <h4>RSI指标</h4>
+                        <div class="value">${stats.rsi.toFixed(2)}</div>
+                        <small>${stats.rsi > 70 ? '超买区间' : stats.rsi < 30 ? '超卖区间' : '正常区间'}</small>
+                    </div>
+                    <div class="analysis-item">
+                        <h4>MACD</h4>
+                        <div class="value">${stats.macd.toFixed(4)}</div>
+                        <small>${stats.macd > 0 ? '多头信号' : '空头信号'}</small>
+                    </div>
+                    <div class="analysis-item">
+                        <h4>成交量</h4>
+                        <div class="value">${stats.volume.toLocaleString()}</div>
+                    </div>
+                    ${stats.chip_analysis ? `
+                    <div class="analysis-item" style="grid-column: span 2;">
+                        <h4>筹码峰分析</h4>
+                        <div class="value" style="color: #ff6b35; font-size: 1em;">${stats.chip_analysis}</div>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                <div style="text-align: center;">
+                    <a href="/chart/${data.chart_file}" target="_blank" class="chart-btn">
+                        📈 查看详细图表 (${stats.stock_name} - ${stats.time_period})
+                    </a>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html> 

@@ -231,5 +231,5 @@ conda activate stock_analysis
 pip install -r config/requirements.txt
 
 # 重新运行程序
-python main.py
+python run.py
 ``` 

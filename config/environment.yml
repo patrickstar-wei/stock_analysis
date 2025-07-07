@@ -15,5 +15,4 @@ dependencies:
   - ipykernel
   - pip
   - pip:
-    - akshare>=1.17.4
-    - talib-binary>=0.4.28 
+    - akshare>=1.17.4 

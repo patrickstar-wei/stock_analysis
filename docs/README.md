@@ -117,7 +117,7 @@ python app.py
 
 ```bash
 # 运行演示脚本
-python demo.py
+python src/demo.py
 ```
 
 ## 🐍 Anaconda 详细使用指南
@@ -163,7 +163,7 @@ conda activate stock_analysis
 cd /path/to/your/stock-analysis
 
 # 运行程序
-python main.py
+python run.py
 ```
 
 #### Spyder IDE（推荐数据科学）
@@ -181,7 +181,7 @@ spyder
    - 点击 Spyder 的 "Launch" 按钮
 
 3. **在 Spyder 中运行**
-   - 打开 `main.py` 文件
+   - 打开 `run.py` 文件
    - 按 F5 或点击运行按钮
    - 在控制台中查看输出
 
@@ -196,7 +196,7 @@ jupyter notebook
 2. **创建新的 notebook**
 ```python
 # 在 notebook 单元格中运行
-%run main.py
+%run run.py
 
 # 或者逐步执行
 from src.stock_analyzer import StockAnalyzer
@@ -246,7 +246,7 @@ jupyter lab
             "name": "Python: Stock Analysis",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/main.py",
+            "program": "${workspaceFolder}/run.py",
             "console": "integratedTerminal"
         }
     ]
@@ -333,7 +333,7 @@ mamba install pandas numpy plotly
 ### 编程接口使用
 
 ```python
-from stock_analyzer import StockAnalyzer
+from src.stock_analyzer import StockAnalyzer
 
 # 创建分析器实例
 analyzer = StockAnalyzer("000001")  # 平安银行
@@ -371,11 +371,18 @@ analyzer.generate_chart("my_analysis.html")
   - 上轨：中轨 + 2倍标准差
   - 下轨：中轨 - 2倍标准差
 
+- **筹码分布**（Chip Distribution）
+  - 基于成交量和价格区间的筹码分布计算
+  - 衰减因子：0.95（模拟筹码的衰减特性）
+  - 价格区间：100个价格档位
+  - 显示主力资金成本区域
+
 ### 图表类型
 
 - **K线图**：开盘、收盘、最高、最低价格
 - **成交量柱状图**：每日成交量
 - **技术指标图**：MACD、RSI、布林带叠加显示
+- **筹码分布图**：显示筹码分布、压力位、支撑位和平均价格标注
 
 ## 🎯 常用股票代码示例
 

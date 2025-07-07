@@ -29,6 +29,12 @@ def demo():
     # 显示最新分析结果
     analyzer.get_latest_signals()
     
+    # 生成交易信号分析
+    print("\n" + "="*60)
+    print("📊 交易信号分析")
+    print("="*60)
+    analyzer.print_trading_signals()
+    
     # 生成图表
     print("\n正在生成分析图表...")
     fig = analyzer.plot_analysis()

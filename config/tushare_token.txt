@@ -2,4 +2,4 @@
 # 获取地址：https://tushare.pro/register
 # 示例：your_tushare_token_here
 
-2f98514cbfe216bccae041cd743f2b4fa5fe512ee799801b504b9af1
+your_tushare_token_here

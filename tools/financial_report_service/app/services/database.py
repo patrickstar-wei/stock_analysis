@@ -188,17 +188,19 @@ class FinancialDatabase:
         conn = self._get_conn()
         rows = conn.execute(
             "SELECT metric_name, metric_value, unit, source, confidence "
-            "FROM metrics WHERE code = ? AND report_period = ?",
+            "FROM metrics WHERE code = ? AND report_period = ? "
+            "ORDER BY CASE source WHEN 'missing' THEN 2 ELSE 1 END, confidence DESC",
             (code, report_period),
         ).fetchall()
         result: Dict[str, Dict[str, object]] = {}
         for row in rows:
-            result[row["metric_name"]] = {
-                "value": row["metric_value"],
-                "unit": row["unit"],
-                "source": row["source"],
-                "confidence": row["confidence"],
-            }
+            if row["metric_name"] not in result:
+                result[row["metric_name"]] = {
+                    "value": row["metric_value"],
+                    "unit": row["unit"],
+                    "source": row["source"],
+                    "confidence": row["confidence"],
+                }
         return result
 
     def get_all_metrics_for_code(
@@ -264,10 +266,18 @@ class FinancialDatabase:
         conn = self._get_conn()
         rows = conn.execute(
             "SELECT report_period, metric_name, metric_value, unit, source, confidence "
-            "FROM metrics WHERE code = ? ORDER BY report_period DESC, metric_name",
+            "FROM metrics WHERE code = ? "
+            "ORDER BY report_period DESC, CASE source WHEN 'missing' THEN 2 ELSE 1 END, confidence DESC",
             (code,),
         ).fetchall()
-        return [dict(r) for r in rows]
+        result: List[Dict[str, object]] = []
+        seen: set = set()
+        for row in rows:
+            key = (row["report_period"], row["metric_name"])
+            if key not in seen:
+                seen.add(key)
+                result.append(dict(row))
+        return result
 
     def search_companies(self, keyword: str) -> List[Dict[str, str]]:
         conn = self._get_conn()
@@ -296,3 +306,15 @@ class FinancialDatabase:
             "metric_count": metric_count,
             "cached_count": cached_count,
         }
+
+    def delete_metrics_for_code(self, code: str) -> int:
+        conn = self._get_conn()
+        cur = conn.execute("DELETE FROM metrics WHERE code = ?", (code,))
+        conn.commit()
+        return cur.rowcount
+
+    def delete_reports_for_code(self, code: str) -> int:
+        conn = self._get_conn()
+        cur = conn.execute("DELETE FROM reports WHERE code = ?", (code,))
+        conn.commit()
+        return cur.rowcount

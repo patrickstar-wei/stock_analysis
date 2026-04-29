@@ -28,10 +28,9 @@ class PDFParser:
         page_count = 0
         with pdfplumber.open(str(pdf_path)) as pdf:
             page_count = len(pdf.pages)
-            for idx, page in enumerate(pdf.pages):
-                if idx >= max_pages:
-                    break
-                page_text = page.extract_text() or ""
+            limit = page_count if max_pages <= 0 else min(max_pages, page_count)
+            for idx in range(limit):
+                page_text = pdf.pages[idx].extract_text() or ""
                 texts.append(page_text)
 
         full_text = "\n".join(texts)
@@ -47,15 +46,9 @@ class PDFParser:
         if shutil.which("pdftotext") is None:
             return None
 
-        cmd = [
-            "pdftotext",
-            "-f",
-            "1",
-            "-l",
-            str(max_pages),
-            str(pdf_path),
-            "-",
-        ]
+        cmd = ["pdftotext", str(pdf_path), "-"]
+        if max_pages > 0:
+            cmd = ["pdftotext", "-f", "1", "-l", str(max_pages), str(pdf_path), "-"]
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
         except Exception:
@@ -65,12 +58,12 @@ class PDFParser:
         char_count = len(text.strip())
         return PDFTextResult(
             text=text,
-            page_count=max_pages,
+            page_count=max_pages if max_pages > 0 else char_count // 2000,
             char_count=char_count,
             scanned_suspected=char_count < self.settings.scanned_text_threshold,
         )
 
-    def extract_text(self, pdf_path: Path, max_pages: int = 120) -> PDFTextResult:
+    def extract_text(self, pdf_path: Path, max_pages: int = 0) -> PDFTextResult:
         result = self._extract_with_pdfplumber(pdf_path, max_pages=max_pages)
         if result.char_count > 0:
             return result

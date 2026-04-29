@@ -32,6 +32,7 @@ class ParseStatus(str, Enum):
 class MetricSource(str, Enum):
     pdf = "pdf"
     akshare = "akshare"
+    efinance = "efinance"
     missing = "missing"
 
 

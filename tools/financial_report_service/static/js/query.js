@@ -53,7 +53,7 @@ async function submitJob() {
   form.append('file', blob, 'codes.csv');
   form.append('years', document.getElementById('years').value);
   form.append('report_types', types.join(','));
-  form.append('full_refresh', document.getElementById('fullRefresh').checked);
+  form.append('full_refresh', document.getElementById('fullRefresh').checked ? 'true' : 'false');
 
   try {
     const res = await fetch(API + '/jobs', { method: 'POST', body: form });

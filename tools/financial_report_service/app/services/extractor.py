@@ -265,7 +265,30 @@ class MetricExtractor:
             if extracted is not None:
                 result[metric_name] = extracted
 
+        self._compute_derived_metrics(result)
+
         return result
+
+    @staticmethod
+    def _compute_derived_metrics(result: Dict[str, ExtractedMetric]) -> None:
+        total_assets = result.get("总资产")
+        total_liabilities = result.get("总负债")
+        if total_assets and total_liabilities and total_assets.value and total_liabilities.value and "资产负债率" not in result:
+            ratio = total_liabilities.value / total_assets.value
+            result["资产负债率"] = ExtractedMetric(value=ratio, unit="%", confidence=0.7)
+
+        revenue = result.get("营业收入")
+        cost = result.get("营业成本")
+        if revenue and cost and revenue.value and cost.value and "毛利率" not in result:
+            if revenue.value != 0:
+                margin = (revenue.value - cost.value) / revenue.value
+                result["毛利率"] = ExtractedMetric(value=margin, unit="%", confidence=0.7)
+
+        if revenue and "研发投入" in result and "研发占比" not in result:
+            rd = result["研发投入"]
+            if revenue.value and rd.value and revenue.value != 0:
+                ratio = rd.value / revenue.value
+                result["研发占比"] = ExtractedMetric(value=ratio, unit="%", confidence=0.7)
 
     @staticmethod
     def merge_metrics(

@@ -8,8 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-from app.clients.akshare_client import AkshareClient
+from app.clients.akshare_client import AkshareClient, AkMetric
 from app.clients.cninfo_client import CninfoAnnouncement, CninfoClient
+from app.clients.efinance_client import EfinanceClient
 from app.config import Settings
 from app.models import (
     FetchStatus,
@@ -32,6 +33,9 @@ def utc_now() -> datetime:
     return datetime.now(tz=timezone.utc)
 
 
+API_SUFFICIENT_RATIO = 0.6
+
+
 @dataclass
 class JobState:
     job_id: str
@@ -45,6 +49,7 @@ class JobState:
     success_reports: int = 0
     failed_reports: int = 0
     cached_reports: int = 0
+    api_only_reports: int = 0
     artifacts: Dict[str, str] = field(default_factory=dict)
     summary: Dict[str, object] = field(default_factory=dict)
 
@@ -73,6 +78,7 @@ class JobManager:
         self.storage = StorageService(settings)
         self.cninfo = CninfoClient(settings)
         self.akshare = AkshareClient()
+        self.efinance = EfinanceClient()
         self.pdf_parser = PDFParser(settings)
         self.extractor = MetricExtractor()
         self.db = FinancialDatabase(settings)
@@ -137,7 +143,7 @@ class JobManager:
         )
 
     @staticmethod
-    def _select_ak_metrics(ak_metrics_by_period: Dict[str, Dict[str, object]], report_period: str) -> Dict[str, object]:
+    def _select_ak_metrics(ak_metrics_by_period: Dict[str, Dict[str, AkMetric]], report_period: str) -> Dict[str, AkMetric]:
         if not ak_metrics_by_period:
             return {}
         if report_period in ak_metrics_by_period:
@@ -154,6 +160,10 @@ class JobManager:
         if candidates:
             return ak_metrics_by_period[candidates[-1]]
         return ak_metrics_by_period[keys[-1]]
+
+    @staticmethod
+    def _count_non_missing(metrics: Dict[str, Dict[str, object]]) -> int:
+        return sum(1 for m in metrics.values() if m.get("value") is not None)
 
     def _build_metric_records_from_db(
         self,
@@ -265,6 +275,133 @@ class JobManager:
             })
         self.db.upsert_metrics_batch(code, ann.report_period, metrics_rows, now_iso)
 
+    def _save_api_only_periods(
+        self,
+        code: str,
+        name: str,
+        exchange: str,
+        ak_metrics_by_period: Dict[str, Dict[str, AkMetric]],
+        ef_metrics: Dict[str, AkMetric],
+        state: JobState,
+        dirs: Dict[str, Path],
+        manifest_records: List[ReportRecord],
+        metric_records: List[MetricRecord],
+        now_iso: str,
+    ) -> None:
+        from app.models import MetricSource
+
+        self.db.upsert_company(code, name, exchange, now_iso)
+
+        for period, ak_metrics in sorted(ak_metrics_by_period.items()):
+            api_merged = self._merge_api_metrics({}, ak_metrics, ef_metrics)
+            api_non_missing = self._count_non_missing(api_merged)
+            if api_non_missing < len(METRIC_NAMES) * API_SUFFICIENT_RATIO:
+                continue
+
+            ann_id = f"api_{code}_{period.replace('-', '')}"
+            self.db.upsert_report(
+                announcement_id=ann_id,
+                code=code,
+                name=name,
+                exchange=exchange,
+                title=f"API数据-{period}",
+                report_type="api",
+                report_date=period,
+                report_period=period,
+                pdf_url="",
+                pdf_path="",
+                fetch_status="api_only",
+                parse_status="api_only",
+                now=now_iso,
+            )
+            metrics_rows = []
+            for metric_name, item in api_merged.items():
+                metrics_rows.append({
+                    "metric_name": metric_name,
+                    "metric_value": item.get("value"),
+                    "unit": item.get("unit", "元"),
+                    "source": item.get("source", "missing"),
+                    "confidence": item.get("confidence", 0.0),
+                })
+            self.db.upsert_metrics_batch(code, period, metrics_rows, now_iso)
+
+            for metric_name in METRIC_NAMES:
+                item = api_merged[metric_name]
+                metric_records.append(
+                    MetricRecord(
+                        job_id=state.job_id,
+                        code=code,
+                        report_period=period,
+                        metric_name=metric_name,
+                        metric_value=item["value"],
+                        unit=item["unit"],
+                        source=item["source"],
+                        confidence=item["confidence"],
+                    )
+                )
+
+            manifest_records.append(
+                ReportRecord(
+                    code=code,
+                    name=name,
+                    exchange=exchange,
+                    announcement_id=ann_id,
+                    title=f"API数据-{period}",
+                    report_type="api",
+                    report_date=period,
+                    report_period=period,
+                    pdf_url="",
+                    pdf_path="",
+                    fetch_status=FetchStatus.skipped_exists,
+                    parse_status=ParseStatus.skipped_existing,
+                )
+            )
+            state.api_only_reports += 1
+            state.success_reports += 1
+
+    def _merge_api_metrics(
+        self,
+        base: Dict[str, Dict[str, object]],
+        ak_metrics: Dict[str, AkMetric],
+        ef_metrics: Dict[str, AkMetric],
+    ) -> Dict[str, Dict[str, object]]:
+        """Merge metrics: existing data > akshare > efinance > missing."""
+        from app.models import MetricSource
+
+        merged: Dict[str, Dict[str, object]] = {}
+        for metric_name in METRIC_NAMES:
+            if metric_name in base and base[metric_name].get("value") is not None:
+                merged[metric_name] = base[metric_name]
+                continue
+
+            ak = ak_metrics.get(metric_name)
+            if ak is not None:
+                merged[metric_name] = {
+                    "value": float(ak.value),
+                    "unit": ak.unit,
+                    "source": MetricSource.akshare.value,
+                    "confidence": 0.7,
+                }
+                continue
+
+            ef = ef_metrics.get(metric_name)
+            if ef is not None:
+                merged[metric_name] = {
+                    "value": float(ef.value),
+                    "unit": ef.unit,
+                    "source": MetricSource.efinance.value,
+                    "confidence": 0.6,
+                }
+                continue
+
+            merged[metric_name] = {
+                "value": None,
+                "unit": "%" if metric_name in {"ROE", "资产负债率", "毛利率", "研发占比"} else "元",
+                "source": MetricSource.missing.value,
+                "confidence": 0.0,
+            }
+        return merged
+
     def _run_job(self, state: JobState, code_records: List[Dict[str, str]]) -> None:
         dirs = self.storage.ensure_job_dirs(state.job_id)
         report_index = self.storage.load_report_index()
@@ -284,6 +421,10 @@ class JobManager:
                 cached_name = self.db.get_company_name(code)
                 name = requested_name or cached_name or self.akshare.lookup_stock_name(code)
 
+                if state.options.full_refresh:
+                    self.db.delete_metrics_for_code(code)
+                    self.db.delete_reports_for_code(code)
+
                 try:
                     announcements = self.cninfo.query_announcements(
                         code=code,
@@ -298,16 +439,46 @@ class JobManager:
                     continue
 
                 if not announcements:
-                    self._append_error(dirs["errors"], code, "query_announcements", "no announcements")
+                    if not state.options.full_refresh:
+                        db_all = self.db.get_all_metrics_for_code(code)
+                        if db_all:
+                            for period, db_metrics in db_all.items():
+                                if self._count_non_missing(db_metrics) >= len(METRIC_NAMES) * 0.5:
+                                    metric_records.extend(
+                                        self._build_metric_records_from_db(
+                                            state.job_id, code, period, db_metrics
+                                        )
+                                    )
+                                    state.cached_reports += 1
+                                    state.success_reports += 1
+                            if state.cached_reports > 0:
+                                state.done_codes += 1
+                                continue
+
+                    ak_metrics_by_period, ak_status = self.akshare.get_financial_metrics_by_period(code)
+                    ef_metrics, ef_status = self.efinance.get_latest_metrics(code)
+
+                    if ak_status == "akshare_ok" and ak_metrics_by_period:
+                        self._save_api_only_periods(
+                            code, name, "", ak_metrics_by_period, ef_metrics,
+                            state, dirs, manifest_records, metric_records, now_iso,
+                        )
+                        state.done_codes += 1
+                        continue
+
+                    self._append_error(dirs["errors"], code, "query_announcements", "no announcements and no API data")
                     state.failed_reports += 1
                     state.done_codes += 1
                     continue
 
-                need_akshare = False
+                ak_metrics_by_period: Dict[str, Dict[str, AkMetric]] = {}
+                ef_metrics: Dict[str, AkMetric] = {}
+
+                need_api = False
                 for ann in announcements:
                     if not state.options.full_refresh:
                         db_metrics = self.db.get_metrics_for_period(code, ann.report_period)
-                        if db_metrics and len(db_metrics) >= len(METRIC_NAMES) * 0.5:
+                        if db_metrics and self._count_non_missing(db_metrics) >= len(METRIC_NAMES) * 0.5:
                             metric_records.extend(
                                 self._build_metric_records_from_db(
                                     state.job_id, code, ann.report_period, db_metrics
@@ -333,20 +504,94 @@ class JobManager:
                             state.cached_reports += 1
                             state.success_reports += 1
                             continue
-                    need_akshare = True
+                    need_api = True
 
-                ak_metrics_by_period: Dict[str, Dict[str, object]] = {}
-                if need_akshare:
+                if need_api:
                     ak_metrics_by_period, ak_status = self.akshare.get_financial_metrics_by_period(code)
                     if ak_status != "akshare_ok":
                         self._append_error(dirs["errors"], code, "akshare", ak_status)
 
-                announcements_to_download = [
-                    ann for ann in announcements
-                    if not (not state.options.full_refresh
-                            and self.db.get_metrics_for_period(code, ann.report_period)
-                            and len(self.db.get_metrics_for_period(code, ann.report_period)) >= len(METRIC_NAMES) * 0.5)
-                ]
+                    ef_metrics, ef_status = self.efinance.get_latest_metrics(code)
+                    if ef_status != "efinance_ok":
+                        self._append_error(dirs["errors"], code, "efinance", ef_status)
+
+                announcements_needing_data = []
+                for ann in announcements:
+                    if not state.options.full_refresh:
+                        db_metrics = self.db.get_metrics_for_period(code, ann.report_period)
+                        if db_metrics and self._count_non_missing(db_metrics) >= len(METRIC_NAMES) * 0.5:
+                            continue
+                    announcements_needing_data.append(ann)
+
+                announcements_to_download = []
+                for ann in announcements_needing_data:
+                    ak_metrics = self._select_ak_metrics(ak_metrics_by_period, ann.report_period)
+                    api_merged = self._merge_api_metrics({}, ak_metrics, ef_metrics)
+                    api_non_missing = self._count_non_missing(api_merged)
+
+                    if api_non_missing >= len(METRIC_NAMES) * API_SUFFICIENT_RATIO:
+                        self.db.upsert_company(code, name, ann.exchange, now_iso)
+                        self.db.upsert_report(
+                            announcement_id=ann.announcement_id,
+                            code=code,
+                            name=name,
+                            exchange=ann.exchange,
+                            title=ann.title,
+                            report_type=ann.report_type,
+                            report_date=ann.report_date,
+                            report_period=ann.report_period,
+                            pdf_url=ann.pdf_url,
+                            pdf_path="",
+                            fetch_status="api_only",
+                            parse_status="api_only",
+                            now=now_iso,
+                        )
+                        metrics_rows = []
+                        for metric_name, item in api_merged.items():
+                            metrics_rows.append({
+                                "metric_name": metric_name,
+                                "metric_value": item.get("value"),
+                                "unit": item.get("unit", "元"),
+                                "source": item.get("source", "missing"),
+                                "confidence": item.get("confidence", 0.0),
+                            })
+                        self.db.upsert_metrics_batch(code, ann.report_period, metrics_rows, now_iso)
+
+                        for metric_name in METRIC_NAMES:
+                            item = api_merged[metric_name]
+                            metric_records.append(
+                                MetricRecord(
+                                    job_id=state.job_id,
+                                    code=code,
+                                    report_period=ann.report_period,
+                                    metric_name=metric_name,
+                                    metric_value=item["value"],
+                                    unit=item["unit"],
+                                    source=item["source"],
+                                    confidence=item["confidence"],
+                                )
+                            )
+
+                        manifest_records.append(
+                            ReportRecord(
+                                code=ann.code,
+                                name=ann.name or name,
+                                exchange=ann.exchange,
+                                announcement_id=ann.announcement_id,
+                                title=ann.title,
+                                report_type=ann.report_type,
+                                report_date=ann.report_date,
+                                report_period=ann.report_period,
+                                pdf_url=ann.pdf_url,
+                                pdf_path="",
+                                fetch_status=FetchStatus.skipped_exists,
+                                parse_status=ParseStatus.skipped_existing,
+                            )
+                        )
+                        state.api_only_reports += 1
+                        state.success_reports += 1
+                    else:
+                        announcements_to_download.append(ann)
 
                 if announcements_to_download:
                     dl_map = self._download_reports_concurrently(
@@ -411,7 +656,11 @@ class JobManager:
                             self._append_error(dirs["errors"], code, "parse_pdf", str(exc))
 
                         ak_metrics = self._select_ak_metrics(ak_metrics_by_period, ann.report_period)
-                        merged = self.extractor.merge_metrics(pdf_metrics=pdf_metrics, ak_metrics=ak_metrics)
+                        merged = self._merge_api_metrics(
+                            self.extractor.merge_metrics(pdf_metrics=pdf_metrics, ak_metrics=ak_metrics),
+                            {},
+                            ef_metrics,
+                        )
 
                         self._save_to_database(
                             code=code,
@@ -490,6 +739,7 @@ class JobManager:
                 "success_reports": state.success_reports,
                 "failed_reports": state.failed_reports,
                 "cached_reports": state.cached_reports,
+                "api_only_reports": state.api_only_reports,
                 "manifest_count": len(manifest_records),
                 "metric_count": len(metric_records),
             }

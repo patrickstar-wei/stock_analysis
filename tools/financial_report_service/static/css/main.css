@@ -276,6 +276,7 @@ tr:hover td { background: var(--bg-2); }
 .badge-amber { background: var(--amber-dim); color: var(--amber); }
 .badge-blue { background: rgba(0,184,212,0.12); color: var(--accent-2); }
 .badge-gray { background: rgba(107,125,142,0.15); color: var(--text-2); }
+.badge-purple { background: rgba(156,39,176,0.12); color: #ce93d8; }
 
 .btn {
   display: inline-flex;

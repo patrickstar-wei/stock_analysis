@@ -238,3 +238,61 @@ class FinancialDatabase:
             (code,),
         ).fetchone()
         return row["name"] if row else None
+
+    def list_companies(self) -> List[Dict[str, str]]:
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT c.code, c.name, c.exchange, "
+            "  (SELECT COUNT(DISTINCT m.report_period) FROM metrics m WHERE m.code = c.code) AS period_count, "
+            "  (SELECT COUNT(*) FROM metrics m WHERE m.code = c.code) AS metric_count, "
+            "  c.updated_at "
+            "FROM companies c ORDER BY c.updated_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_reports_for_code(self, code: str) -> List[Dict[str, str]]:
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT announcement_id, code, name, title, report_type, report_date, "
+            "  report_period, pdf_url, fetch_status, parse_status, updated_at "
+            "FROM reports WHERE code = ? ORDER BY report_period DESC",
+            (code,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_metrics_for_code(self, code: str) -> List[Dict[str, object]]:
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT report_period, metric_name, metric_value, unit, source, confidence "
+            "FROM metrics WHERE code = ? ORDER BY report_period DESC, metric_name",
+            (code,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def search_companies(self, keyword: str) -> List[Dict[str, str]]:
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT c.code, c.name, c.exchange, "
+            "  (SELECT COUNT(DISTINCT m.report_period) FROM metrics m WHERE m.code = c.code) AS period_count, "
+            "  (SELECT COUNT(*) FROM metrics m WHERE m.code = c.code) AS metric_count, "
+            "  c.updated_at "
+            "FROM companies c WHERE c.code LIKE ? OR c.name LIKE ? "
+            "ORDER BY c.updated_at DESC",
+            (f"%{keyword}%", f"%{keyword}%"),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_dashboard_stats(self) -> Dict[str, int]:
+        conn = self._get_conn()
+        company_count = conn.execute("SELECT COUNT(*) AS cnt FROM companies").fetchone()["cnt"]
+        report_count = conn.execute("SELECT COUNT(*) AS cnt FROM reports").fetchone()["cnt"]
+        metric_count = conn.execute("SELECT COUNT(*) AS cnt FROM metrics").fetchone()["cnt"]
+        cached_count = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM reports WHERE fetch_status = 'skipped_exists'"
+        ).fetchone()["cnt"]
+        return {
+            "company_count": company_count,
+            "report_count": report_count,
+            "metric_count": metric_count,
+            "cached_count": cached_count,
+        }

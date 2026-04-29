@@ -235,7 +235,7 @@ class CninfoClient:
 
                     unique[announcement_id] = CninfoAnnouncement(
                         code=code,
-                        name=str(row.get("secName") or name or ""),
+                        name=self.strip_html(str(row.get("secName") or name or "")),
                         exchange=exchange_label,
                         announcement_id=announcement_id,
                         title=self.strip_html(title),

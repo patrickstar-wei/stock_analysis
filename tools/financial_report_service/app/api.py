@@ -130,3 +130,30 @@ def get_job_results(job_id: str, manager: JobManager = Depends(get_job_manager))
 @router.get("/healthz", response_model=HealthResponse)
 def healthz(manager: JobManager = Depends(get_job_manager)) -> HealthResponse:
     return HealthResponse(status="ok", version=settings.app_version, uptime_seconds=manager.uptime_seconds)
+
+
+@router.get("/dashboard/stats")
+def dashboard_stats(manager: JobManager = Depends(get_job_manager)):
+    return manager.db.get_dashboard_stats()
+
+
+@router.get("/companies")
+def list_companies(manager: JobManager = Depends(get_job_manager)):
+    return manager.db.list_companies()
+
+
+@router.get("/companies/search")
+def search_companies(q: str, manager: JobManager = Depends(get_job_manager)):
+    if not q.strip():
+        return manager.db.list_companies()
+    return manager.db.search_companies(q.strip())
+
+
+@router.get("/companies/{code}/reports")
+def list_reports(code: str, manager: JobManager = Depends(get_job_manager)):
+    return manager.db.list_reports_for_code(code)
+
+
+@router.get("/companies/{code}/metrics")
+def list_metrics(code: str, manager: JobManager = Depends(get_job_manager)):
+    return manager.db.list_metrics_for_code(code)

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股财报服务</title>
+<link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <h1>A股财报 <span>v0.1</span></h1>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+        <span class="nav-icon">◉</span> 仪表盘
+      </div>
+      <div class="nav-item" data-page="query" onclick="navigate('query')">
+        <span class="nav-icon">⇩</span> 获取数据
+      </div>
+      <div class="nav-item" data-page="data" onclick="navigate('data')">
+        <span class="nav-icon">⊡</span> 数据浏览
+      </div>
+      <div class="nav-item" data-page="jobs" onclick="navigate('jobs')">
+        <span class="nav-icon">☰</span> 任务列表
+      </div>
+    </div>
+    <div class="sidebar-stats" id="sidebarStats"></div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="topbarTitle">仪表盘</div>
+      <div class="topbar-spacer"></div>
+      <div class="topbar-status">
+        <span class="status-dot"></span>
+        <span id="topbarStatus">服务运行中</span>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="page active" id="page-dashboard">
+        <div class="stats-grid" id="dashStats"></div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">最近更新的公司</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>代码</th><th>名称</th><th>交易所</th><th>报告期数</th><th>指标数</th><th>更新时间</th></tr></thead>
+              <tbody id="dashCompanies"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-query">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">获取财报数据</span>
+          </div>
+          <div class="form-row">
+            <span class="form-label">股票代码</span>
+            <div style="flex:1">
+              <div class="code-input-area" id="codeInputArea" onclick="document.getElementById('codeInput').focus()">
+                <input id="codeInput" placeholder="输入6位股票代码，回车添加" onkeydown="handleCodeInput(event)">
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <span class="form-label">报告类型</span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="report-type-btn active" data-value="annual" onclick="toggleReportType(this)">✓ 年报</button>
+              <button class="report-type-btn" data-value="semi" onclick="toggleReportType(this)">中报</button>
+              <button class="report-type-btn" data-value="q1" onclick="toggleReportType(this)">一季报</button>
+              <button class="report-type-btn" data-value="q3" onclick="toggleReportType(this)">三季报</button>
+            </div>
+          </div>
+          <div class="form-row">
+            <span class="form-label">年数</span>
+            <input class="input input-mono" type="number" id="years" value="3" min="1" max="20" style="width:80px;">
+          </div>
+          <div class="form-row">
+            <span class="form-label">强制刷新</span>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="checkbox" id="fullRefresh"> <span style="font-size:12px;color:var(--text-2);">忽略缓存，重新下载</span>
+            </label>
+          </div>
+          <div style="margin-top:16px;">
+            <button class="btn btn-primary" onclick="submitJob()">提交任务</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-data">
+        <div id="dataListView">
+          <div class="search-box">
+            <input id="companySearch" placeholder="搜索股票代码或名称..." oninput="searchCompanies(this.value)">
+          </div>
+          <div class="table-wrap" style="max-height:calc(100vh - 220px);">
+            <table>
+              <thead><tr><th>代码</th><th>名称</th><th>交易所</th><th>报告期数</th><th>指标数</th><th>更新时间</th></tr></thead>
+              <tbody id="companyList"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="dataDetailView" style="display:none;">
+          <div class="back-btn" onclick="showCompanyList()">← 返回列表</div>
+          <div class="detail-header" id="detailHeader"></div>
+          <div class="period-tabs" id="periodTabs"></div>
+          <div id="detailMetrics"></div>
+          <div class="card" style="margin-top:16px;">
+            <div class="card-header">
+              <span class="card-title">报告列表</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>公告标题</th><th>类型</th><th>报告期</th><th>获取状态</th><th>解析状态</th></tr></thead>
+                <tbody id="detailReports"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-jobs">
+        <div id="jobList"></div>
+        <div class="empty-state" id="jobEmpty">
+          <div class="icon">☰</div>
+          <div class="title">暂无任务</div>
+          <div class="desc">前往"获取数据"页面提交新任务</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/ui.js"></script>
+<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/query.js"></script>
+<script src="/static/js/data.js"></script>
+<script src="/static/js/jobs.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
